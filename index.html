@@ -44,6 +44,7 @@ svg{width:100%;height:90px;display:block}
     <label>% em FIIs (resto: ações)<input id="pct" type="number" inputmode="numeric" min="0" max="100"></label>
     <label>Dia do lembrete<input id="dia" type="number" inputmode="numeric" min="1" max="28"></label>
   </div>
+  <label class="mu" style="display:block;margin-top:10px">Como dividir o aporte<select id="modo"><option value="split">Dividir o valor do mês (60/40 só do aporte)</option><option value="balance">Equilibrar a carteira toda (considera o que já tenho)</option></select></label>
 </div>
 
 <div class="card">
@@ -104,14 +105,14 @@ svg{width:100%;height:90px;display:block}
 
 <script>
 var KEY="aporte-mensal-v2";
-var DEF={aporte:800,pct:60,dia:5,meta:500,tok:"",qt:"",last:"",hist:[],rec:{},assets:[
+var DEF={aporte:800,pct:60,dia:5,meta:500,tok:"",qt:"",last:"",hist:[],rec:{},modo:"split",assets:[
  ["BBSE3","A",0.38,[2,8]],["CMIG4","A",0.1,[6,12]],["HGLG11","F",1.1],["ITSA3","A",0.03,[1,3,4,7,8,10]],["KLBN11","A",0.08,[2,5,8,11]],
  ["KNCR11","F",1.15],["KNRI11","F",1.1],["MXRF11","F",0.1],["TAEE11","A",0.25,[1,5,8,11]],["XPML11","F",0.92]
 ].map(function(a){return {t:a[0],g:a[1],w:1,p:0,q:0,d:a[2],m:a[3]||[]}})};
 var S;
 try{S=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){S=null}
 if(!S||!S.assets)S=JSON.parse(JSON.stringify(DEF));
-S.rec=S.rec||{};
+S.rec=S.rec||{};S.modo=S.modo||"split";
 if(!S.dv2){S.dv2=1;S.assets.forEach(function(a){var f=DEF.assets.filter(function(x){return x.t===a.t})[0];if(f&&a.g==='A'&&!a.m)a.m=f.m.slice();if(a.t==='ITSA3'&&a.d===0.05)a.d=0.03})}
 if(!S.dv){S.dv=1;if(S.assets.every(function(a){return !a.d})){S.assets.forEach(function(a){var f=DEF.assets.filter(function(x){return x.t===a.t})[0];if(f)a.d=f.d})}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
@@ -138,7 +139,7 @@ function renderBanner(){
 
 function calc(){
   var A=S.assets,ap=+S.aporte||0,pf=(+S.pct||0)/100,sw={F:0,A:0},total=ap,i;
-  A.forEach(function(a){if(a.p>0){sw[a.g]+=+a.w||0;total+=a.q*a.p}});
+  A.forEach(function(a){if(a.p>0){sw[a.g]+=+a.w||0;if(S.modo!=="split")total+=a.q*a.p}});
   var tgt=A.map(function(a){
     if(!(a.p>0)||!sw[a.g])return 0;
     return total*(a.g==="F"?pf:1-pf)*(+a.w||0)/sw[a.g];
@@ -147,11 +148,11 @@ function calc(){
   for(var k=0;k<2000;k++){
     best=-1;bd=0;
     for(i=0;i<A.length;i++)if(A[i].p>0&&A[i].p<=left+1e-9){
-      var df=tgt[i]-(A[i].q+buy[i])*A[i].p;if(df>bd){bd=df;best=i}
+      var df=tgt[i]-((S.modo==="split"?0:A[i].q)+buy[i])*A[i].p;if(df>bd){bd=df;best=i}
     }
     if(best<0)break;buy[best]++;left-=A[best].p;
   }
-  plan=A.map(function(a,i){return {t:a.t,g:a.g,n:buy[i],cost:buy[i]*a.p,ideal:tgt[i]-a.q*a.p,over:tgt[i]>0&&a.q*a.p>tgt[i]*1.2}});
+  plan=A.map(function(a,i){return {t:a.t,g:a.g,n:buy[i],cost:buy[i]*a.p,ideal:tgt[i]-(S.modo==="split"?0:a.q*a.p),over:S.modo!=="split"&&tgt[i]>0&&a.q*a.p>tgt[i]*1.2}});
   return {left:left,missing:A.filter(function(a){return !(a.p>0)}).length};
 }
 
@@ -269,7 +270,9 @@ $("btnReg").onclick=function(){
   S.last=cur;
   buildAssets();renderHist();refresh();
 };
-function fillTop(){["aporte","pct","dia","meta"].forEach(function(k){$(k).value=S[k]})}
+$("modo").value=S.modo;
+$("modo").onchange=function(){S.modo=$("modo").value;refresh()};
+function fillTop(){$("modo").value=S.modo;["aporte","pct","dia","meta"].forEach(function(k){$(k).value=S[k]})}
 $("btnZero").onclick=function(){
   if(!confirm("Zerar o histórico e as cotas que você tem? Preços, dividendos, pesos e token são mantidos."))return;
   S.assets.forEach(function(a){a.q=0});S.hist=[];S.last="";
