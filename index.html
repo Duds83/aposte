@@ -16,7 +16,7 @@ h1{font-size:22px;margin:4px 0 12px}h2{font-size:14px;margin:0 0 10px;text-trans
 .banner.due{background:var(--wb);color:var(--wa)}
 .banner small{display:block;font-weight:400;color:var(--mu);margin-top:2px}
 .row{display:flex;gap:10px;flex-wrap:wrap}.row>label{flex:1;min-width:110px;font-size:12px;color:var(--mu)}
-input{width:100%;padding:9px;border:1px solid var(--bd);border-radius:9px;background:var(--bg);color:var(--tx);font-size:16px;margin-top:3px}
+input,select{width:100%;padding:9px;border:1px solid var(--bd);border-radius:9px;background:var(--bg);color:var(--tx);font-size:16px;margin-top:3px}
 button{border:0;border-radius:10px;padding:11px 14px;font-size:15px;font-weight:600;background:var(--ac);color:#fff;cursor:pointer}
 button.sec{background:var(--ac2);color:var(--ac)}button:disabled{opacity:.5}
 .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -27,6 +27,8 @@ button.sec{background:var(--ac2);color:var(--ac)}button:disabled{opacity:.5}
 .res .q{font-weight:700;color:var(--ac);text-align:right}.res .s{font-size:12px;color:var(--mu)}
 .mu{color:var(--mu);font-size:13px}.big{font-size:20px;font-weight:700}.wa{color:var(--wa)}
 .bar{height:10px;background:var(--ac2);border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--ac)}
+.cur{background:var(--ac2);border-radius:8px;padding-left:6px;padding-right:6px}
+.ms{grid-column:1/-1;display:flex;gap:3px}.mb{flex:1;min-width:0;padding:6px 0;font-size:11px;border-radius:6px;background:var(--bg);color:var(--mu);border:1px solid var(--bd)}.mb.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 svg{width:100%;height:90px;display:block}
 </style>
 </head>
@@ -74,6 +76,21 @@ svg{width:100%;height:90px;display:block}
 </div>
 
 <div class="card">
+  <h2>Dividendos</h2>
+  <div class="row">
+    <label>Ano<select id="yr"></select></label>
+    <label>Mês<select id="mo"></select></label>
+    <label>Recebido (R$)<input id="rv" type="number" inputmode="decimal" step="0.01"></label>
+  </div>
+  <div class="btns"><button id="btnRec">💾 Salvar mês</button><button class="sec" id="btnRecDel">Apagar mês</button></div>
+  <div id="calsum" style="margin-top:10px"></div>
+  <h2 style="margin-top:14px">Calendário previsto</h2>
+  <div class="mu" style="margin-bottom:4px">FIIs pagam todo mês. Ações entram nos meses marcados em "Paga em" na Carteira.</div>
+  <div id="cal"></div>
+  <div id="cumchart"></div>
+</div>
+
+<div class="card">
   <h2>Evolução</h2>
   <div id="charts"></div>
   <div id="hist"></div>
@@ -87,13 +104,15 @@ svg{width:100%;height:90px;display:block}
 
 <script>
 var KEY="aporte-mensal-v2";
-var DEF={aporte:800,pct:60,dia:5,meta:500,tok:"",qt:"",last:"",hist:[],assets:[
- ["BBSE3","A",0.38],["CMIG4","A",0.1],["HGLG11","F",1.1],["ITSA3","A",0.05],["KLBN11","A",0.08],
- ["KNCR11","F",1.15],["KNRI11","F",1.1],["MXRF11","F",0.1],["TAEE11","A",0.25],["XPML11","F",0.92]
-].map(function(a){return {t:a[0],g:a[1],w:1,p:0,q:0,d:a[2]}})};
+var DEF={aporte:800,pct:60,dia:5,meta:500,tok:"",qt:"",last:"",hist:[],rec:{},assets:[
+ ["BBSE3","A",0.38,[2,8]],["CMIG4","A",0.1,[6,12]],["HGLG11","F",1.1],["ITSA3","A",0.03,[1,3,4,7,8,10]],["KLBN11","A",0.08,[2,5,8,11]],
+ ["KNCR11","F",1.15],["KNRI11","F",1.1],["MXRF11","F",0.1],["TAEE11","A",0.25,[1,5,8,11]],["XPML11","F",0.92]
+].map(function(a){return {t:a[0],g:a[1],w:1,p:0,q:0,d:a[2],m:a[3]||[]}})};
 var S;
 try{S=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){S=null}
 if(!S||!S.assets)S=JSON.parse(JSON.stringify(DEF));
+S.rec=S.rec||{};
+if(!S.dv2){S.dv2=1;S.assets.forEach(function(a){var f=DEF.assets.filter(function(x){return x.t===a.t})[0];if(f&&a.g==='A'&&!a.m)a.m=f.m.slice();if(a.t==='ITSA3'&&a.d===0.05)a.d=0.03})}
 if(!S.dv){S.dv=1;if(S.assets.every(function(a){return !a.d})){S.assets.forEach(function(a){var f=DEF.assets.filter(function(x){return x.t===a.t})[0];if(f)a.d=f.d})}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 function brl(v){return v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
@@ -186,10 +205,12 @@ function buildAssets(){
   function f(i,k,l,st,v){return '<label>'+l+'<input data-i="'+i+'" data-k="'+k+'" type="number" inputmode="decimal" step="'+st+'" value="'+(v||"")+'"></label>'}
   $("assets").innerHTML=S.assets.map(function(a,i){
     return '<div class="asset"><div class="h"><b>'+a.t+'</b><span class="tag">'+(a.g==="F"?"FII":"Ação/Unit")+'</span></div>'+
-      f(i,"p","Preço","0.01",a.p)+f(i,"q","Tenho","1",a.q)+f(i,"w","Peso","0.5",a.w)+f(i,"d","Div/mês","0.01",a.d)+'</div>';
+      f(i,"p","Preço","0.01",a.p)+f(i,"q","Tenho","1",a.q)+f(i,"w","Peso","0.5",a.w)+f(i,"d","Div/mês","0.01",a.d)+
+      (a.g==="A"?'<div class="mu" style="grid-column:1/-1;font-size:11px">Meses em que costuma pagar</div><div class="ms">'+MN.map(function(n,j){return '<button class="mb'+(a.m&&a.m.indexOf(j+1)>=0?' on':'')+'" data-i="'+i+'" data-mo="'+(j+1)+'">'+n[0]+'</button>'}).join("")+'</div>':"")+'</div>';
   }).join("");
 }
-function refresh(){save();renderResult();renderBanner()}
+var MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+function refresh(){save();renderResult();renderBanner();renderCal()}
 
 $("assets").addEventListener("input",function(e){
   var t=e.target,i=t.dataset.i;if(i===undefined)return;
@@ -255,12 +276,58 @@ $("btnZero").onclick=function(){
   buildAssets();renderHist();refresh();
 };
 $("btnDef").onclick=function(){
-  if(!confirm("Restaurar tudo ao padrão (aporte, %, preços, cotas, dividendos e histórico)? Só o token é mantido."))return;
-  var tok=S.tok;S=JSON.parse(JSON.stringify(DEF));S.tok=tok;S.dv=1;
+  if(!confirm("Restaurar tudo ao padrão (aporte, %, preços, cotas, dividendos, histórico e dividendos registrados)? Só o token é mantido."))return;
+  var tok=S.tok;S=JSON.parse(JSON.stringify(DEF));S.tok=tok;S.dv=1;S.dv2=1;
   $("token").value=tok;fillTop();buildAssets();renderHist();refresh();
-  $("qstatus").textContent="";
+  $("qstatus").textContent="";loadRv();
 };
-buildAssets();renderHist();refresh();
+function est(m){
+  var t=0,acts=[];
+  S.assets.forEach(function(a){
+    if(a.g==="F")t+=a.q*a.d;
+    else if(a.m&&a.m.indexOf(m)>=0){t+=a.q*a.d*12/a.m.length;acts.push(a.t)}
+  });
+  return {v:t,acts:acts};
+}
+function pad(m){return String(m).padStart(2,"0")}
+function renderCal(){
+  var y=+$("yr").value,now=new Date(),h="",pv=0,rv=0;
+  for(var m=1;m<=12;m++){
+    var e=est(m),r=S.rec[y+"-"+pad(m)];pv+=e.v;if(r!==undefined)rv+=r;
+    h+='<div class="res'+((y===now.getFullYear()&&m===now.getMonth()+1)?' cur':'')+'"><div><b>'+MN[m-1]+'</b><div class="s">'+(e.acts.length?'FIIs + '+e.acts.join(", "):'só FIIs')+'</div></div><div class="q">'+brl(e.v)+(r!==undefined?'<div class="s" style="color:var(--ac)">✓ recebido '+brl(r)+'</div>':'')+'</div></div>';
+  }
+  var ks=Object.keys(S.rec).sort(),tot=0,cum=[];
+  ks.forEach(function(k){tot+=S.rec[k];cum.push(tot)});
+  $("calsum").innerHTML='<div class="res" style="border:0"><span>Recebido em '+y+'</span><b>'+brl(rv)+'</b></div>'+
+    '<div class="res"><span>Previsto em '+y+' (cotas atuais)</span><b>'+brl(pv)+'</b></div>'+
+    '<div class="res"><span>Total recebido até agora</span><b class="q">'+brl(tot)+'</b></div>'+
+    (ks.length?'<div class="mu">Média de '+brl(tot/ks.length)+' por mês registrado</div>':'');
+  $("cal").innerHTML=h;
+  $("cumchart").innerHTML=spark(cum,"Dividendos acumulados",brl);
+}
+(function(){
+  var y=new Date().getFullYear(),h="";
+  for(var i=y-2;i<=y+1;i++)h+='<option'+(i===y?' selected':'')+'>'+i+'</option>';
+  $("yr").innerHTML=h;
+  $("mo").innerHTML=MN.map(function(n,j){return '<option value="'+(j+1)+'">'+n+'</option>'}).join("");
+  $("mo").value=new Date().getMonth()+1;
+})();
+function rkey(){return $("yr").value+"-"+pad($("mo").value)}
+function loadRv(){var v=S.rec[rkey()];$("rv").value=v===undefined?"":v}
+$("yr").onchange=$("mo").onchange=function(){loadRv();renderCal()};
+$("btnRec").onclick=function(){
+  var v=parseFloat($("rv").value);if(!(v>=0))return;
+  S.rec[rkey()]=v;save();var m=+$("mo").value;if(m<12)$("mo").value=m+1;
+  loadRv();renderCal();
+};
+$("btnRecDel").onclick=function(){delete S.rec[rkey()];save();loadRv();renderCal()};
+$("assets").addEventListener("click",function(e){
+  var t=e.target;if(!t.dataset||!t.dataset.mo)return;
+  var a=S.assets[t.dataset.i],m=+t.dataset.mo,k=a.m.indexOf(m);
+  if(k>=0)a.m.splice(k,1);else{a.m.push(m);a.m.sort(function(x,y){return x-y})}
+  t.classList.toggle("on");save();renderCal();
+});
+loadRv();buildAssets();renderHist();refresh();
 </script>
 </body>
 </html>
