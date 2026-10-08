@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aporte Mensal</title>
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--tx:#1b2420;--mu:#68736d;--ac:#1f7a4d;--ac2:#e3f2ea;--bd:#e0e4df;--wa:#b4590b;--wb:#fdf0e1}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121715;--card:#1b2320;--tx:#e8eeea;--mu:#93a39b;--ac:#4cc58a;--ac2:#1d3328;--bd:#2a3530;--wa:#f0a560;--wb:#33261a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 12px}h2{font-size:14px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em;color:var(--mu)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:14px}
+.banner{border-radius:14px;padding:14px;margin-bottom:14px;background:var(--ac2);font-weight:600}
+.banner.due{background:var(--wb);color:var(--wa)}
+.banner small{display:block;font-weight:400;color:var(--mu);margin-top:2px}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>label{flex:1;min-width:110px;font-size:12px;color:var(--mu)}
+input{width:100%;padding:9px;border:1px solid var(--bd);border-radius:9px;background:var(--bg);color:var(--tx);font-size:16px;margin-top:3px}
+button{border:0;border-radius:10px;padding:11px 14px;font-size:15px;font-weight:600;background:var(--ac);color:#fff;cursor:pointer}
+button.sec{background:var(--ac2);color:var(--ac)}button:disabled{opacity:.5}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.asset{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:9px 0;border-top:1px solid var(--bd)}
+.asset .h{grid-column:1/-1;font-size:14px}.asset label{font-size:11px;color:var(--mu)}.asset input{padding:7px;font-size:14px}
+.tag{font-size:11px;color:var(--mu);margin-left:6px}
+.res{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--bd)}
+.res .q{font-weight:700;color:var(--ac);text-align:right}.res .s{font-size:12px;color:var(--mu)}
+.mu{color:var(--mu);font-size:13px}.big{font-size:20px;font-weight:700}.wa{color:var(--wa)}
+.bar{height:10px;background:var(--ac2);border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--ac)}
+svg{width:100%;height:90px;display:block}
+</style>
+</head>
+<body>
+<main>
+<h1>💸 Aporte Mensal</h1>
+<div id="banner"></div>
+
+<div class="card">
+  <h2>Aporte</h2>
+  <div class="row">
+    <label>Valor do mês (R$)<input id="aporte" type="number" inputmode="decimal" step="0.01"></label>
+    <label>% em FIIs (resto: ações)<input id="pct" type="number" inputmode="numeric" min="0" max="100"></label>
+    <label>Dia do lembrete<input id="dia" type="number" inputmode="numeric" min="1" max="28"></label>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Cotações automáticas</h2>
+  <label class="mu">Token da brapi.dev (grátis, fica só no seu navegador)
+    <input id="token" type="password" autocomplete="off" placeholder="cole seu token aqui"></label>
+  <div class="btns"><button id="btnQuote">🔄 Atualizar valor de cotas</button></div>
+  <div class="mu" id="qstatus" style="margin-top:8px"></div>
+</div>
+
+<div class="card">
+  <h2>Carteira</h2>
+  <p class="mu" style="margin:0 0 6px">Preço (automático ou manual), cotas que você tem, peso dentro do grupo (1 = igual) e dividendo médio por cota/mês.</p>
+  <div id="assets"></div>
+</div>
+
+<div class="card">
+  <h2>O que comprar este mês</h2>
+  <div id="result"></div>
+  <div class="btns">
+    <button id="btnReg">✅ Registrar aporte feito</button>
+    <button class="sec" id="btnCopy">Copiar lista</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Renda passiva</h2>
+  <div id="income"></div>
+  <label class="mu" style="display:block;margin-top:8px">Meta de renda mensal (R$)<input id="meta" type="number" inputmode="decimal"></label>
+</div>
+
+<div class="card">
+  <h2>Evolução</h2>
+  <div id="charts"></div>
+  <div id="hist"></div>
+</div>
+</main>
+
+<script>
+var KEY="aporte-mensal-v2";
+var DEF={aporte:800,pct:60,dia:5,meta:500,tok:"",qt:"",last:"",hist:[],assets:[
+ ["BBSE3","A"],["CMIG4","A"],["HGLG11","F"],["ITSA3","A"],["KLBN11","A"],
+ ["KNCR11","F"],["KNRI11","F"],["MXRF11","F"],["TAEE11","A"],["XPML11","F"]
+].map(function(a){return {t:a[0],g:a[1],w:1,p:0,q:0,d:0}})};
+var S;
+try{S=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){S=null}
+if(!S||!S.assets)S=JSON.parse(JSON.stringify(DEF));
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function brl(v){return v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
+function ym(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
+function $(id){return document.getElementById(id)}
+var plan=[];
+
+function renderBanner(){
+  var now=new Date(),cur=ym(now),dia=S.dia,streak=0,d=new Date(now.getFullYear(),now.getMonth(),1);
+  if(S.last!==cur)d.setMonth(d.getMonth()-1);
+  while(S.hist.some(function(h){return h.m===ym(d)})){streak++;d.setMonth(d.getMonth()-1)}
+  var st=streak?'<small>🔥 '+streak+(streak>1?' meses seguidos':' mês')+' investindo</small>':'<small>Comece sua sequência este mês</small>';
+  var h;
+  if(S.last===cur){
+    var n=Math.ceil((new Date(now.getFullYear(),now.getMonth()+1,dia)-now)/864e5);
+    h='<div class="banner">✅ Aporte deste mês feito! Próximo em '+n+' dias.'+st+'</div>';
+  }else if(now.getDate()>=dia){
+    var l=now.getDate()-dia;
+    h='<div class="banner due">'+(l?'⏰ Aporte atrasado '+l+' dia(s)!':'⏰ Hoje é dia de investir!')+st+'</div>';
+  }else h='<div class="banner">Faltam '+(dia-now.getDate())+' dias para o aporte (dia '+dia+').'+st+'</div>';
+  $("banner").innerHTML=h;
+}
+
+function calc(){
+  var A=S.assets,ap=+S.aporte||0,pf=(+S.pct||0)/100,sw={F:0,A:0},total=ap,i;
+  A.forEach(function(a){if(a.p>0){sw[a.g]+=+a.w||0;total+=a.q*a.p}});
+  var tgt=A.map(function(a){
+    if(!(a.p>0)||!sw[a.g])return 0;
+    return total*(a.g==="F"?pf:1-pf)*(+a.w||0)/sw[a.g];
+  });
+  var buy=A.map(function(){return 0}),left=ap,best,bd;
+  for(var k=0;k<2000;k++){
+    best=-1;bd=0;
+    for(i=0;i<A.length;i++)if(A[i].p>0&&A[i].p<=left+1e-9){
+      var df=tgt[i]-(A[i].q+buy[i])*A[i].p;if(df>bd){bd=df;best=i}
+    }
+    if(best<0)break;buy[best]++;left-=A[best].p;
+  }
+  plan=A.map(function(a,i){return {t:a.t,g:a.g,n:buy[i],cost:buy[i]*a.p,ideal:tgt[i]-a.q*a.p,over:tgt[i]>0&&a.q*a.p>tgt[i]*1.2}});
+  return {left:left,missing:A.filter(function(a){return !(a.p>0)}).length};
+}
+
+function renderResult(){
+  var r=calc(),h="",spent=0;
+  [["F","FIIs"],["A","Ações"]].forEach(function(g){
+    var it=plan.filter(function(p){return p.g===g[0]}),sub=it.reduce(function(s,p){return s+p.cost},0);spent+=sub;
+    h+='<div class="mu" style="margin-top:8px"><b>'+g[1]+'</b> · '+brl(sub)+'</div>';
+    it.forEach(function(p){
+      h+='<div class="res"><div><b>'+p.t+'</b>'+(p.over?' <span class="wa">⚠️ acima do peso</span>':'')+
+        '<div class="s">ideal p/ equilibrar: '+brl(Math.max(0,p.ideal))+'</div></div>'+
+        '<div class="q">'+(p.n?p.n+' cota'+(p.n>1?'s':'')+'<div class="s">'+brl(p.cost)+'</div>':'—')+'</div></div>';
+    });
+  });
+  h+='<div class="res"><span>Total a investir</span><span class="big">'+brl(spent)+'</span></div>';
+  h+='<div class="mu">Sobra para o mês que vem: '+brl(r.left)+'</div>';
+  if(r.missing)h+='<div class="mu wa" style="margin-top:6px">⚠️ '+r.missing+' ativo(s) sem preço.</div>';
+  $("result").innerHTML=h;
+  renderIncome();
+}
+
+function renderIncome(){
+  var now=0,after=0,meta=+S.meta||0;
+  S.assets.forEach(function(a,i){now+=a.q*a.d;after+=(a.q+plan[i].n)*a.d});
+  var pc=meta>0?Math.min(100,after/meta*100):0,h='';
+  h+='<div class="res" style="border:0"><span>Hoje</span><b>'+brl(now)+'/mês</b></div>';
+  h+='<div class="res"><span>Após este aporte</span><b class="q">'+brl(after)+'/mês</b></div>';
+  if(meta>0)h+='<div class="bar"><i style="width:'+pc+'%"></i></div><div class="mu">'+pc.toFixed(0)+'% da meta de '+brl(meta)+
+    (after<meta?' · faltam '+brl(meta-after):' · meta batida 🎉')+'</div>';
+  if(!after)h+='<div class="mu">Preencha o dividendo por cota/mês na carteira para ver a estimativa.</div>';
+  $("income").innerHTML=h;
+}
+
+function spark(vals,label,fmt){
+  if(vals.length<2)return '';
+  var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),rg=(mx-mn)||1;
+  var pts=vals.map(function(v,i){return (i/(vals.length-1)*300+5).toFixed(1)+","+(80-(v-mn)/rg*70).toFixed(1)}).join(" ");
+  return '<div class="mu">'+label+': '+fmt(vals[vals.length-1])+'</div><svg viewBox="0 0 310 90" preserveAspectRatio="none"><polyline points="'+pts+'" fill="none" stroke="var(--ac)" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+}
+function renderHist(){
+  var H=S.hist,tot=H.reduce(function(s,x){return s+x.v},0);
+  $("charts").innerHTML=spark(H.map(function(x){return x.pat||0}),"Patrimônio",brl)+spark(H.map(function(x){return x.inc||0}),"Renda mensal estimada",brl)||
+    '<div class="mu">Os gráficos aparecem a partir do 2º aporte registrado.</div>';
+  if(H.length<2)$("charts").innerHTML='<div class="mu">Os gráficos aparecem a partir do 2º aporte registrado.</div>';
+  $("hist").innerHTML=H.slice().reverse().map(function(x){
+    return '<div class="res"><div><b>'+x.m+'</b><div class="s">'+x.d+'</div></div><div class="q">'+brl(x.v)+'</div></div>';
+  }).join("")+(H.length?'<div class="res"><span>Total aportado</span><b>'+brl(tot)+'</b></div>':'<div class="mu">Nenhum aporte registrado ainda.</div>');
+}
+
+function buildAssets(){
+  function f(i,k,l,st,v){return '<label>'+l+'<input data-i="'+i+'" data-k="'+k+'" type="number" inputmode="decimal" step="'+st+'" value="'+(v||"")+'"></label>'}
+  $("assets").innerHTML=S.assets.map(function(a,i){
+    return '<div class="asset"><div class="h"><b>'+a.t+'</b><span class="tag">'+(a.g==="F"?"FII":"Ação/Unit")+'</span></div>'+
+      f(i,"p","Preço","0.01",a.p)+f(i,"q","Tenho","1",a.q)+f(i,"w","Peso","0.5",a.w)+f(i,"d","Div/mês","0.01",a.d)+'</div>';
+  }).join("");
+}
+function refresh(){save();renderResult();renderBanner()}
+
+$("assets").addEventListener("input",function(e){
+  var t=e.target,i=t.dataset.i;if(i===undefined)return;
+  S.assets[i][t.dataset.k]=parseFloat(t.value)||0;refresh();
+});
+[["aporte",0],["pct",100],["dia",28],["meta",0]].forEach(function(p){
+  var el=$(p[0]);el.value=S[p[0]];
+  el.addEventListener("input",function(){
+    var v=parseFloat(el.value)||0;
+    if(p[0]==="pct")v=Math.min(100,Math.max(0,v));
+    if(p[0]==="dia")v=Math.min(28,Math.max(1,v||1));
+    S[p[0]]=v;refresh();
+  });
+});
+$("token").value=S.tok||"";
+$("token").addEventListener("input",function(){S.tok=$("token").value.trim();save()});
+$("qstatus").textContent=S.qt?"Última atualização: "+S.qt:"";
+
+$("btnQuote").onclick=function(){
+  if(!S.tok){$("qstatus").textContent="Cole seu token da brapi.dev primeiro.";return}
+  var b=$("btnQuote");b.disabled=true;$("qstatus").textContent="Buscando cotações…";
+  Promise.allSettled(S.assets.map(function(a){
+    return fetch("https://brapi.dev/api/quote/"+a.t+"?token="+encodeURIComponent(S.tok))
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
+      .then(function(j){var p=j.results&&j.results[0]&&j.results[0].regularMarketPrice;if(!(p>0))throw new Error("sem preço");a.p=p});
+  })).then(function(rs){
+    var bad=rs.map(function(r,i){return r.status==="rejected"?S.assets[i].t+" ("+r.reason.message+")":null}).filter(Boolean);
+    S.qt=new Date().toLocaleString("pt-BR");
+    buildAssets();refresh();b.disabled=false;
+    $("qstatus").textContent=bad.length?"Atualizado, mas falhou: "+bad.join(", ")+". Cotação tem ~30 min de atraso no plano grátis.":"✅ Cotações atualizadas em "+S.qt+" (atraso de ~30 min).";
+  });
+};
+$("btnCopy").onclick=function(){
+  var txt="Aporte "+ym(new Date())+"\n"+plan.filter(function(p){return p.n}).map(function(p){return p.t+": "+p.n+" cota(s) = "+brl(p.cost)}).join("\n"),b=$("btnCopy");
+  try{navigator.clipboard.writeText(txt).then(function(){b.textContent="Copiado!"},function(){b.textContent="Não copiou"})}catch(e){b.textContent="Não copiou"}
+  setTimeout(function(){b.textContent="Copiar lista"},1800);
+};
+$("btnReg").onclick=function(){
+  if(!plan.some(function(p){return p.n})||!confirm("Registrar este aporte e somar as cotas à carteira?"))return;
+  var v=0,d=[],pat=0,inc=0;
+  S.assets.forEach(function(a,i){a.q+=plan[i].n;v+=plan[i].cost;if(plan[i].n)d.push(a.t+" ×"+plan[i].n);pat+=a.q*a.p;inc+=a.q*a.d});
+  var cur=ym(new Date());
+  S.hist=S.hist.filter(function(h){return h.m!==cur});
+  S.hist.push({m:cur,v:v,d:d.join(", "),pat:pat,inc:inc});S.last=cur;
+  buildAssets();renderHist();refresh();
+};
+buildAssets();renderHist();refresh();
+</script>
+</body>
+</html>
