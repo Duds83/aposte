@@ -202,19 +202,29 @@ $("token").value=S.tok||"";
 $("token").addEventListener("input",function(){S.tok=$("token").value.trim();save()});
 $("qstatus").textContent=S.qt?"Última atualização: "+S.qt:"";
 
-$("btnQuote").onclick=function(){
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+$("btnQuote").onclick=async function(){
   if(!S.tok){$("qstatus").textContent="Cole seu token da brapi.dev primeiro.";return}
-  var b=$("btnQuote");b.disabled=true;$("qstatus").textContent="Buscando cotações…";
-  Promise.allSettled(S.assets.map(function(a){
-    return fetch("https://brapi.dev/api/quote/"+a.t+"?token="+encodeURIComponent(S.tok))
-      .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()})
-      .then(function(j){var p=j.results&&j.results[0]&&j.results[0].regularMarketPrice;if(!(p>0))throw new Error("sem preço");a.p=p});
-  })).then(function(rs){
-    var bad=rs.map(function(r,i){return r.status==="rejected"?S.assets[i].t+" ("+r.reason.message+")":null}).filter(Boolean);
-    S.qt=new Date().toLocaleString("pt-BR");
-    buildAssets();refresh();b.disabled=false;
-    $("qstatus").textContent=bad.length?"Atualizado, mas falhou: "+bad.join(", ")+". Cotação tem ~30 min de atraso no plano grátis.":"✅ Cotações atualizadas em "+S.qt+" (atraso de ~30 min).";
-  });
+  var b=$("btnQuote"),bad=[],n=S.assets.length;b.disabled=true;
+  for(var i=0;i<n;i++){
+    var a=S.assets[i],ok=false,err="";
+    $("qstatus").textContent="Buscando "+a.t+" ("+(i+1)+"/"+n+")…";
+    for(var tr=0;tr<4&&!ok;tr++){
+      try{
+        var r=await fetch("https://brapi.dev/api/quote/"+a.t+"?token="+encodeURIComponent(S.tok));
+        if(r.status===429){err="429 limite";await sleep(1500*(tr+1));continue}
+        if(!r.ok){err=String(r.status);break}
+        var j=await r.json(),p=j.results&&j.results[0]&&j.results[0].regularMarketPrice;
+        if(!(p>0)){err="sem preço";break}
+        a.p=p;ok=true;
+      }catch(e){err=e.message;break}
+    }
+    if(!ok)bad.push(a.t+" ("+err+")");
+    await sleep(500);
+  }
+  S.qt=new Date().toLocaleString("pt-BR");
+  buildAssets();refresh();b.disabled=false;
+  $("qstatus").textContent=bad.length?"Atualizado, mas falhou: "+bad.join(", ")+". Tente de novo em 1 minuto.":"✅ Cotações atualizadas em "+S.qt+" (atraso de ~30 min).";
 };
 $("btnCopy").onclick=function(){
   var txt="Aporte "+ym(new Date())+"\n"+plan.filter(function(p){return p.n}).map(function(p){return p.t+": "+p.n+" cota(s) = "+brl(p.cost)}).join("\n"),b=$("btnCopy");
