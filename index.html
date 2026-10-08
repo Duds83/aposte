@@ -77,18 +77,24 @@ svg{width:100%;height:90px;display:block}
   <h2>Evolução</h2>
   <div id="charts"></div>
   <div id="hist"></div>
+  <div class="btns">
+    <button class="sec" id="btnZero">🔄 Zerar histórico e cotas</button>
+    <button class="sec" id="btnDef">↩️ Restaurar tudo ao padrão</button>
+  </div>
+  <div class="mu" style="margin-top:6px">Para simular, zere e depois preencha "Tenho" e registre aportes à vontade. O token é sempre mantido.</div>
 </div>
 </main>
 
 <script>
 var KEY="aporte-mensal-v2";
 var DEF={aporte:800,pct:60,dia:5,meta:500,tok:"",qt:"",last:"",hist:[],assets:[
- ["BBSE3","A"],["CMIG4","A"],["HGLG11","F"],["ITSA3","A"],["KLBN11","A"],
- ["KNCR11","F"],["KNRI11","F"],["MXRF11","F"],["TAEE11","A"],["XPML11","F"]
-].map(function(a){return {t:a[0],g:a[1],w:1,p:0,q:0,d:0}})};
+ ["BBSE3","A",0.38],["CMIG4","A",0.1],["HGLG11","F",1.1],["ITSA3","A",0.05],["KLBN11","A",0.08],
+ ["KNCR11","F",1.15],["KNRI11","F",1.1],["MXRF11","F",0.1],["TAEE11","A",0.25],["XPML11","F",0.92]
+].map(function(a){return {t:a[0],g:a[1],w:1,p:0,q:0,d:a[2]}})};
 var S;
 try{S=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){S=null}
 if(!S||!S.assets)S=JSON.parse(JSON.stringify(DEF));
+if(!S.dv){S.dv=1;if(S.assets.every(function(a){return !a.d})){S.assets.forEach(function(a){var f=DEF.assets.filter(function(x){return x.t===a.t})[0];if(f)a.d=f.d})}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 function brl(v){return v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
 function ym(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
@@ -236,9 +242,23 @@ $("btnReg").onclick=function(){
   var v=0,d=[],pat=0,inc=0;
   S.assets.forEach(function(a,i){a.q+=plan[i].n;v+=plan[i].cost;if(plan[i].n)d.push(a.t+" ×"+plan[i].n);pat+=a.q*a.p;inc+=a.q*a.d});
   var cur=ym(new Date());
-  S.hist=S.hist.filter(function(h){return h.m!==cur});
-  S.hist.push({m:cur,v:v,d:d.join(", "),pat:pat,inc:inc});S.last=cur;
+  var ex=S.hist.filter(function(h){return h.m===cur})[0];
+  if(ex){ex.v+=v;ex.d+=", "+d.join(", ");ex.pat=pat;ex.inc=inc}
+  else S.hist.push({m:cur,v:v,d:d.join(", "),pat:pat,inc:inc});
+  S.last=cur;
   buildAssets();renderHist();refresh();
+};
+function fillTop(){["aporte","pct","dia","meta"].forEach(function(k){$(k).value=S[k]})}
+$("btnZero").onclick=function(){
+  if(!confirm("Zerar o histórico e as cotas que você tem? Preços, dividendos, pesos e token são mantidos."))return;
+  S.assets.forEach(function(a){a.q=0});S.hist=[];S.last="";
+  buildAssets();renderHist();refresh();
+};
+$("btnDef").onclick=function(){
+  if(!confirm("Restaurar tudo ao padrão (aporte, %, preços, cotas, dividendos e histórico)? Só o token é mantido."))return;
+  var tok=S.tok;S=JSON.parse(JSON.stringify(DEF));S.tok=tok;S.dv=1;
+  $("token").value=tok;fillTop();buildAssets();renderHist();refresh();
+  $("qstatus").textContent="";
 };
 buildAssets();renderHist();refresh();
 </script>
