@@ -45,6 +45,8 @@ svg{width:100%;height:90px;display:block}
     <label>Dia do lembrete<input id="dia" type="number" inputmode="numeric" min="1" max="28"></label>
   </div>
   <label class="mu" style="display:block;margin-top:10px">Como dividir o aporte<select id="modo"><option value="split">Dividir o valor do mês (60/40 só do aporte)</option><option value="balance">Equilibrar a carteira toda (considera o que já tenho)</option></select></label>
+  <label class="mu" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="reinv" style="width:auto;margin:0"> Somar ao aporte os dividendos recebidos no mês passado</label>
+  <div class="mu" id="reinvInfo" style="margin-top:4px"></div>
 </div>
 
 <div class="card">
@@ -105,14 +107,14 @@ svg{width:100%;height:90px;display:block}
 
 <script>
 var KEY="aporte-mensal-v2";
-var DEF={aporte:800,pct:60,dia:5,meta:500,tok:"",qt:"",last:"",hist:[],rec:{},modo:"split",assets:[
+var DEF={aporte:800,pct:60,dia:5,meta:500,tok:"",qt:"",last:"",hist:[],rec:{},modo:"split",reinv:false,assets:[
  ["BBSE3","A",0.38,[2,8]],["CMIG4","A",0.1,[6,12]],["HGLG11","F",1.1],["ITSA3","A",0.03,[1,3,4,7,8,10]],["KLBN11","A",0.08,[2,5,8,11]],
  ["KNCR11","F",1.15],["KNRI11","F",1.1],["MXRF11","F",0.1],["TAEE11","A",0.25,[1,5,8,11]],["XPML11","F",0.92]
 ].map(function(a){return {t:a[0],g:a[1],w:1,p:0,q:0,d:a[2],m:a[3]||[]}})};
 var S;
 try{S=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){S=null}
 if(!S||!S.assets)S=JSON.parse(JSON.stringify(DEF));
-S.rec=S.rec||{};S.modo=S.modo||"split";
+S.rec=S.rec||{};S.modo=S.modo||"split";S.reinv=!!S.reinv;
 if(!S.dv2){S.dv2=1;S.assets.forEach(function(a){var f=DEF.assets.filter(function(x){return x.t===a.t})[0];if(f&&a.g==='A'&&!a.m)a.m=f.m.slice();if(a.t==='ITSA3'&&a.d===0.05)a.d=0.03})}
 if(!S.dv){S.dv=1;if(S.assets.every(function(a){return !a.d})){S.assets.forEach(function(a){var f=DEF.assets.filter(function(x){return x.t===a.t})[0];if(f)a.d=f.d})}}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
@@ -138,7 +140,7 @@ function renderBanner(){
 }
 
 function calc(){
-  var A=S.assets,ap=+S.aporte||0,pf=(+S.pct||0)/100,sw={F:0,A:0},total=ap,i;
+  var A=S.assets,ap=(+S.aporte||0)+(S.reinv?prevDiv():0),pf=(+S.pct||0)/100,sw={F:0,A:0},total=ap,i;
   A.forEach(function(a){if(a.p>0){sw[a.g]+=+a.w||0;if(S.modo!=="split")total+=a.q*a.p}});
   var tgt=A.map(function(a){
     if(!(a.p>0)||!sw[a.g])return 0;
@@ -211,7 +213,14 @@ function buildAssets(){
   }).join("");
 }
 var MN=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-function refresh(){save();renderResult();renderBanner();renderCal()}
+function prevDiv(){var n=new Date(),v=S.rec[ym(new Date(n.getFullYear(),n.getMonth()-1,1))];return v===undefined?0:v}
+function renderReinv(){
+  var n=new Date(),d=new Date(n.getFullYear(),n.getMonth()-1,1),k=ym(d),v=S.rec[k],el=$("reinvInfo");
+  if(!S.reinv){el.textContent="";return}
+  el.innerHTML=v===undefined?'Sem dividendo registrado em '+MN[d.getMonth()]+'/'+d.getFullYear()+'. Registre no card "Dividendos" e o aporte do mês sobe sozinho.'
+    :MN[d.getMonth()]+'/'+d.getFullYear()+': '+brl(v)+' de dividendos → aporte de '+brl((+S.aporte||0)+v)+' neste mês.';
+}
+function refresh(){save();renderResult();renderBanner();renderCal();renderReinv()}
 
 $("assets").addEventListener("input",function(e){
   var t=e.target,i=t.dataset.i;if(i===undefined)return;
@@ -272,7 +281,9 @@ $("btnReg").onclick=function(){
 };
 $("modo").value=S.modo;
 $("modo").onchange=function(){S.modo=$("modo").value;refresh()};
-function fillTop(){$("modo").value=S.modo;["aporte","pct","dia","meta"].forEach(function(k){$(k).value=S[k]})}
+$("reinv").checked=S.reinv;
+$("reinv").onchange=function(){S.reinv=$("reinv").checked;refresh()};
+function fillTop(){$("modo").value=S.modo;$("reinv").checked=S.reinv;["aporte","pct","dia","meta"].forEach(function(k){$(k).value=S[k]})}
 $("btnZero").onclick=function(){
   if(!confirm("Zerar o histórico e as cotas que você tem? Preços, dividendos, pesos e token são mantidos."))return;
   S.assets.forEach(function(a){a.q=0});S.hist=[];S.last="";
@@ -321,9 +332,9 @@ $("yr").onchange=$("mo").onchange=function(){loadRv();renderCal()};
 $("btnRec").onclick=function(){
   var v=parseFloat($("rv").value);if(!(v>=0))return;
   S.rec[rkey()]=v;save();var m=+$("mo").value;if(m<12)$("mo").value=m+1;
-  loadRv();renderCal();
+  loadRv();refresh();
 };
-$("btnRecDel").onclick=function(){delete S.rec[rkey()];save();loadRv();renderCal()};
+$("btnRecDel").onclick=function(){delete S.rec[rkey()];save();loadRv();refresh()};
 $("assets").addEventListener("click",function(e){
   var t=e.target;if(!t.dataset||!t.dataset.mo)return;
   var a=S.assets[t.dataset.i],m=+t.dataset.mo,k=a.m.indexOf(m);
